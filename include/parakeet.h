@@ -72,6 +72,8 @@ extern "C" {
         size_t (*read)(void * ctx, void * output, size_t read_size);
         bool    (*eof)(void * ctx);
         void  (*close)(void * ctx);
+        /* Optional per-tensor GGML type for containers with mixed quantization. */
+        int (*tensor_type)(void * ctx, const char * name);
     } parakeet_model_loader;
 
     PARAKEET_API const char * parakeet_version(void);

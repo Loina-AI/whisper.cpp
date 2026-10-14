@@ -1235,7 +1235,18 @@ static bool parakeet_model_load(struct parakeet_model_loader * loader, parakeet_
     // Create a list of available bufts, in priority order
     buft_list_t buft_list = make_buft_list(wctx.params);
 
+    ggml_init_params params = { 2 * n_tensors * ggml_tensor_overhead(), nullptr, true };
+    ggml_context * ctx = ggml_init(params);
+
     auto create_tensor = [&](parakeet_tensor type, ggml_tensor * meta, int layer = -1) -> ggml_tensor * {
+        std::string tensor_name = layer >= 0 ? format(PARAKEET_TENSOR_NAMES.at(type), layer) : PARAKEET_TENSOR_NAMES.at(type);
+        if (loader->tensor_type) {
+            int storage_type = loader->tensor_type(loader->context, tensor_name.c_str());
+            if (storage_type < 0 || storage_type >= GGML_TYPE_COUNT) {
+                throw std::runtime_error("invalid tensor storage type: " + tensor_name);
+            }
+            meta = ggml_new_tensor(ctx, (ggml_type) storage_type, ggml_n_dims(meta), meta->ne);
+        }
         ggml_op op = PARAKEET_TENSOR_INFO.at(type);
         ggml_backend_buffer_type_t buft = select_weight_buft(hparams, meta, op, buft_list);
         if (!buft) {
@@ -1246,27 +1257,10 @@ static bool parakeet_model_load(struct parakeet_model_loader * loader, parakeet_
         ggml_context * ctx = get_ctx(buft);
         ggml_tensor * tensor = ggml_dup_tensor(ctx, meta);
 
-        std::string tensor_name;
-        if (layer >= 0) {
-            tensor_name = format(PARAKEET_TENSOR_NAMES.at(type), layer);
-        } else {
-            tensor_name = PARAKEET_TENSOR_NAMES.at(type);
-        }
-
         wctx.model.tensors[tensor_name] = tensor;
 
         return tensor;
     };
-
-    // prepare tensors for the weights
-
-    ggml_init_params params = {
-        /*.mem_size   =*/ n_tensors * ggml_tensor_overhead(),
-        /*.mem_buffer =*/ nullptr,
-        /*.no_alloc   =*/ true,
-    };
-
-    ggml_context * ctx = ggml_init(params);
 
     const int n_audio_state = hparams.n_audio_state;
 
@@ -3157,7 +3151,7 @@ struct parakeet_context * parakeet_init_with_params_no_state(struct parakeet_mod
     if (!model_loaded) {
         loader->close(loader->context);
         PARAKEET_LOG_ERROR("%s: failed to load model\n", __func__);
-        delete ctx;
+        parakeet_free(ctx);
         return nullptr;
     }
 
