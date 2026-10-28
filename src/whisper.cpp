@@ -1650,6 +1650,12 @@ static bool whisper_model_load(struct whisper_model_loader * loader, whisper_con
             vocab.token_beg        += dt;
         }
 
+        // every special token id (token_beg is the largest) must be a valid index into the logits
+        if (vocab.n_vocab <= vocab.token_beg) {
+            WHISPER_LOG_ERROR("%s: invalid model (n_vocab = %d must be greater than token_beg = %d)\n", __func__, vocab.n_vocab, vocab.token_beg);
+            return false;
+        }
+
         if (n_vocab < model.hparams.n_vocab) {
             WHISPER_LOG_INFO("%s: adding %d extra tokens\n", __func__, model.hparams.n_vocab - n_vocab);
             for (int i = n_vocab; i < model.hparams.n_vocab; i++) {
@@ -6808,6 +6814,12 @@ static void whisper_sequence_score(
     }
 }
 
+static void whisper_state_clear_vad(struct whisper_state * state) {
+    state->vad_segments.clear();
+    state->vad_mapping_table.clear();
+    state->has_vad_segments = false;
+}
+
 static bool whisper_vad(
         struct whisper_context * ctx,
           struct whisper_state * state,
@@ -6818,9 +6830,8 @@ static bool whisper_vad(
     WHISPER_LOG_INFO("%s: VAD is enabled, processing speech segments only\n", __func__);
     int filtered_n_samples = 0;
 
-    // Clear any existing mapping table
-    state->vad_mapping_table.clear();
-    state->has_vad_segments = false;
+    // Clear any existing VAD state
+    whisper_state_clear_vad(state);
 
     if (state->vad_context == nullptr) {
         struct whisper_vad_context_params vad_ctx_params = whisper_vad_default_context_params();
@@ -7962,6 +7973,8 @@ int whisper_full(
         }
         samples = vad_samples.data();
         n_samples = vad_samples.size();
+    } else {
+        whisper_state_clear_vad(ctx->state);
     }
     return whisper_full_with_state(ctx, ctx->state, params, samples, n_samples);
 }
@@ -7989,6 +8002,8 @@ int whisper_full_parallel(
         }
         samples = vad_samples.data();
         n_samples = vad_samples.size();
+    } else {
+        whisper_state_clear_vad(ctx->state);
     }
     int ret = 0;
 
@@ -9133,7 +9148,15 @@ static void median_filter(struct ggml_tensor * dst , const struct ggml_tensor * 
         return;
     }
     int filter_width = ((median_filter_user_data *) userdata)->filter_width;
-    WHISPER_ASSERT(filter_width < a->ne[2]);
+    // A window that advanced only a few frames has fewer audio tokens than
+    // the filter is wide: narrow the filter instead of aborting (1: none).
+    if (filter_width >= a->ne[2]) {
+        filter_width = (a->ne[2] % 2) ? (int) a->ne[2] - 2 : (int) a->ne[2] - 1;
+        if (filter_width < 1) {
+            filter_width = 1;
+        }
+    }
+    WHISPER_ASSERT(filter_width < a->ne[2] || filter_width == 1);
     WHISPER_ASSERT(filter_width % 2);
     WHISPER_ASSERT(ggml_n_dims(a) == 3);
     WHISPER_ASSERT(a->type == GGML_TYPE_F32);
