@@ -93,6 +93,8 @@ extern "C" {
 
     PARAKEET_API struct parakeet_state * parakeet_init_state(struct parakeet_context * ctx);
 
+    PARAKEET_API const char * parakeet_get_backend_name(struct parakeet_context * ctx);
+
     // Frees all allocated memory
     PARAKEET_API void parakeet_free      (struct parakeet_context * ctx);
     PARAKEET_API void parakeet_free_state(struct parakeet_state * state);

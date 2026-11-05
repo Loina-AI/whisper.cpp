@@ -830,7 +830,7 @@ static ggml_backend_t parakeet_backend_init_gpu(const parakeet_context_params & 
             enum ggml_backend_dev_type dev_type = ggml_backend_dev_type(dev_cur);
             const char * dev_name = ggml_backend_dev_name(dev_cur);
             PARAKEET_LOG_INFO("%s: device %zu: %s (type: %d)\n", __func__, i, dev_name, dev_type);
-            if (dev_type == GGML_BACKEND_DEVICE_TYPE_GPU || dev_type == GGML_BACKEND_DEVICE_TYPE_IGPU) {
+            if (dev_type == GGML_BACKEND_DEVICE_TYPE_GPU || dev_type == GGML_BACKEND_DEVICE_TYPE_IGPU || dev_type == GGML_BACKEND_DEVICE_TYPE_ACCEL) {
                 PARAKEET_LOG_INFO("%s: found GPU device %zu: %s (type: %d, cnt: %d)\n", __func__, i, dev_name, dev_type, cnt);
                 if (cnt == params.gpu_device) {
                     dev = dev_cur;
@@ -866,20 +866,6 @@ static std::vector<ggml_backend_t> parakeet_backend_init(const parakeet_context_
         result.push_back(backend_gpu);
     }
 
-    // ACCEL backends
-    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
-        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
-        if (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_ACCEL) {
-            PARAKEET_LOG_INFO("%s: using %s backend\n", __func__, ggml_backend_dev_name(dev));
-            ggml_backend_t backend = ggml_backend_dev_init(dev, nullptr);
-            if (!backend) {
-                PARAKEET_LOG_ERROR("%s: failed to initialize %s backend\n", __func__, ggml_backend_dev_name(dev));
-                continue;
-            }
-            result.push_back(backend);
-        }
-    }
-
     ggml_backend_t backend_cpu = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
     if (backend_cpu == nullptr) {
         throw std::runtime_error("failed to initialize CPU backend");
@@ -900,7 +886,7 @@ static buft_list_t make_buft_list(parakeet_context_params & params) {
         int cnt = 0;
         for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
             ggml_backend_dev_t dev = ggml_backend_dev_get(i);
-            if (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_GPU || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_IGPU) {
+            if (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_GPU || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_IGPU || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_ACCEL) {
                 if (cnt == params.gpu_device) {
                     auto * buft = ggml_backend_dev_buffer_type(dev);
                     if (buft) {
@@ -3028,6 +3014,10 @@ struct parakeet_state * parakeet_init_state(parakeet_context * ctx) {
     }
 
     return state;
+}
+
+const char * parakeet_get_backend_name(struct parakeet_context * ctx) {
+    return ctx && ctx->state && !ctx->state->backends.empty() ? ggml_backend_name(ctx->state->backends.front()) : "none";
 }
 
 struct parakeet_context_params parakeet_context_default_params() {
