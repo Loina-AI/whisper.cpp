@@ -1848,21 +1848,14 @@ static struct ggml_cgraph * parakeet_build_graph_encode(parakeet_context & pctx,
                     int center = pos_window / 2;
                     size_t offset = rel_pos_scores->nb[0] * (center+1);
 
-                    rel_pos_scores = ggml_view_3d(ctx0, rel_pos_scores,
-                                                  n_frame, pos_window, n_head_cur,
-                                                  (pos_window) * 4,
-                                                  rel_pos_scores->nb[2],
-                                                  offset);
-
-                    ggml_format_name(rel_pos_scores, "enc_%d_attn_rel_pos_shifted", il);
-
+                    // Crop while shifting so the view stays inside the padded scores.
                     rel_pos_scores = ggml_view_3d(ctx0, rel_pos_scores,
                                                   content_scores->ne[0],
                                                   content_scores->ne[1],
-                                                  rel_pos_scores->ne[2],
-                                                  rel_pos_scores->nb[1],
+                                                  n_head_cur,
+                                                  pos_window * ggml_element_size(rel_pos_scores),
                                                   rel_pos_scores->nb[2],
-                                                  0);
+                                                  offset);
                     rel_pos_scores = ggml_cont(ctx0, rel_pos_scores);
                     ggml_format_name(rel_pos_scores, "enc_%d_attn_rel_pos_shifted_view", il);
                 }
